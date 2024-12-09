@@ -7,7 +7,7 @@ def sign(u):
 
 # Normalização dos dados
 def normalize(X):
-    return (X - np.mean(X, axis=0)) / np.std(X, axis=0)
+    return 2 * (X - np.min(X, axis = 0)) / (np.max(X, axis = 0) - np.min(X, axis = 0)) - 1
 
 # Carregar dados
 data = np.loadtxt('spiral.csv', delimiter=",")
@@ -19,7 +19,9 @@ X = normalize(X)
 
 # Função MLP
 def mlp(X, Y, hidden_layer_sizes, max_epochs, lr):
-    np.random.seed(42)
+    
+    # np.random.seed(42)
+
     N, p = X.shape
     X = np.concatenate((-np.ones((N, 1)), X), axis=1)  # Adiciona bias
 
@@ -58,15 +60,17 @@ def mlp(X, Y, hidden_layer_sizes, max_epochs, lr):
     return (w_hidden, w_output), errors
 
 # Função Adaline
-def adaline(X, Y, max_epoca, lr):
+def adaline(X, Y, max_epochs, lr):
+    
     X = X.T
     Y = Y.T
     p, N = X.shape
+
     X = np.concatenate((-np.ones((1, N)), X))
-    errors = np.zeros((max_epoca,))
+    errors = np.zeros((max_epochs,))
     w = np.random.random_sample((p + 1, 1)) - 0.5
 
-    for epoca in range(max_epoca):
+    for epoca in range(max_epochs):
         for t in range(N):
             x_t = X[:, t].reshape(p + 1, 1)
             u_t = (w.T @ x_t)[0, 0]
@@ -79,23 +83,27 @@ def adaline(X, Y, max_epoca, lr):
     return w, errors
 
 # Função Perceptron
-def perceptron(X, Y, max_epoca, lr):
+def perceptron(X, Y_test, max_epochs, lr):
+    
     X = X.T
-    Y = Y.T
+    Y_ = Y_test.T
     p, N = X.shape
+    
     X = np.concatenate((-np.ones((1, N)), X))
-    errors = np.zeros((max_epoca,))
+    errors = np.zeros((max_epochs,))
     w = np.random.random_sample((p + 1, 1)) - 0.5
 
-    for epoca in range(max_epoca):
+    for epoca in range(max_epochs):
+
         for t in range(N):
             x_t = X[:, t].reshape(p + 1, 1)
             u_t = (w.T @ x_t)[0, 0]
             y_t = sign(u_t)
-            d_t = float(Y[0, t])
+            d_t = float(Y_[0, t])
             e_t = d_t - y_t
-            errors[epoca] += np.abs(e_t)
             w = w + (lr * e_t * x_t) / 2
+
+            errors[epoca] += np.abs(e_t)
 
     return w, errors
 
@@ -103,12 +111,33 @@ def perceptron(X, Y, max_epoca, lr):
 index = np.arange(len(data))
 train_size = int(0.8 * len(index))
 
-# Listas para armazenar as acurácias
-accuracy_results = {"Perceptron": [], "Adaline": [], "MLP": []}
+# Listas para armazenar os resultados
+results = { "Perceptron": [], "Adaline": [], "MLP": [] }
+# results = { "Perceptron": [], "Adaline": [] }
+
+def inference_perceptron(w, x):
+    b = w[-1]
+    w = w[: -1].copy()
+    w = w.reshape((w.shape[0], 1))
+    return sign((w.T @ x) + b)
+
+# Funções auxiliares para cálculo de sensibilidade e especificidade
+def calc_metrics(Y_true, Y_pred):
+    TP = np.sum((Y_true == 1) & (Y_pred == 1))
+    TN = np.sum((Y_true == -1) & (Y_pred == -1))
+    FP = np.sum((Y_true == -1) & (Y_pred == 1))
+    FN = np.sum((Y_true == 1) & (Y_pred == -1))
+
+    accuracy = (TP + TN) / (TP + TN + FP + FN) if (TP + TN + FP + FN) > 0 else 0
+    sensitivity = TP / (TP + FN) if (TP + FN) > 0 else 0
+    specificity = TN / (TN + FP) if (TN + FP) > 0 else 0
+
+    return np.array([[TP, FP], [FN, TN]]), accuracy, sensitivity, specificity
 
 # Comparação de Modelos
 for method, model in zip(["Perceptron", "Adaline", "MLP"], [perceptron, adaline, mlp]):
-    for _ in range(500):  # Monte Carlo com 500 execuções
+# for method, model in zip(["Perceptron", "Adaline"], [perceptron, adaline]):
+    for _ in range(3):  # Monte Carlo com 10 execuções
         np.random.shuffle(index)
         train_idx = index[:train_size]
         test_idx = index[train_size:]
@@ -117,7 +146,7 @@ for method, model in zip(["Perceptron", "Adaline", "MLP"], [perceptron, adaline,
         Y_train, Y_test = Y[train_idx], Y[test_idx]
 
         if method == "MLP":
-            (w_hidden, w_output), errors = model(X_train, Y_train, hidden_layer_sizes=[4], max_epochs=10, lr=0.01)
+            (w_hidden, w_output), errors = model(X_train, Y_train, hidden_layer_sizes=[4], max_epochs=100, lr=0.01)
 
             # Adiciona bias e realiza as predições
             X_test_bias = np.concatenate((-np.ones((X_test.shape[0], 1)), X_test), axis=1)
@@ -125,26 +154,32 @@ for method, model in zip(["Perceptron", "Adaline", "MLP"], [perceptron, adaline,
             hidden_outputs = np.concatenate((-np.ones((hidden_outputs.shape[0], 1)), hidden_outputs), axis=1)  # Bias
             Y_pred = np.array([sign(o) for o in (hidden_outputs @ w_output)])
         else:
-            w, errors = model(X_train, Y_train, max_epoca=10, lr=0.01)
+            w, errors = model(X_train, Y_train, max_epochs = 10, lr = 0.001)
             Y_pred = np.array([sign((w[:-1].T @ x + w[-1]).item()) for x in X_test])
 
-        # Calcula a acurácia e armazena
-        accuracy = np.mean(Y_pred == Y_test.flatten())
-        accuracy_results[method].append(accuracy)
-
-# Funções auxiliares para cálculos manuais
-def calc_mean(data):
-    return sum(data) / len(data)
-
-def calc_std(data, mean_value):
-    return (sum((x - mean_value) ** 2 for x in data) / len(data)) ** 0.5
+        # Calcula métricas
+        cm, accuracy, sensitivity, specificity = calc_metrics(Y_test.flatten(), Y_pred)
+        results[method].append((accuracy, sensitivity, specificity))
 
 # Exibe as estatísticas para cada modelo
-for method, accuracies in accuracy_results.items():
-    mean_accuracy = calc_mean(accuracies)
-    std_accuracy = calc_std(accuracies, mean_accuracy)
+for method, metrics in results.items():
+
+    accuracies = [m[0] for m in metrics]
+    sensitivities = [m[1] for m in metrics]
+    specificities = [m[2] for m in metrics]
+
     print(f"\n{method} Results:")
-    print(f"Mean Accuracy: {mean_accuracy:.4f}")
-    print(f"Standard Deviation: {std_accuracy:.4f}")
-    print(f"Highest Accuracy: {max(accuracies):.4f}")
-    print(f"Lowest Accuracy: {min(accuracies):.4f}")
+    print(f"Média Acurácias: {np.mean(accuracies):.4f}")
+    print(f"Desvio Padrão Acurácias: {np.std(accuracies):.4f}")
+    print(f"Maior Valor Acurácias: {np.max(accuracies):.4f}")
+    print(f"Menor Valor Acurácias: {np.min(accuracies):.4f}")
+
+    print(f"Média Sensibilidade: {np.mean(sensitivities):.4f}")
+    print(f"Desvio Padrão Sensibilidade: {np.std(sensitivities):.4f}")
+    print(f"Maior Valor Sensibilidade: {np.max(sensitivities):.4f}")
+    print(f"Menor Valor Sensibilidade: {np.min(sensitivities):.4f}")
+
+    print(f"Média Especficidade: {np.mean(specificities):.4f}")
+    print(f"Desvio Padrão Especficidade: {np.std(specificities):.4f}")
+    print(f"Maior Valor Especficidade: {np.max(specificities):.4f}")
+    print(f"Menor Valor Especficidade: {np.min(specificities):.4f}")
