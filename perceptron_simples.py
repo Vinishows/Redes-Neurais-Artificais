@@ -185,3 +185,5 @@ especificidades = np.array(especificidades)
 # FN = np.sum((Y.flatten() == -1) & (y.flatten() == 1))
 
 print("Média das Acurácias:", acuracias.mean())
+print("Média das Sensibilidades:", sensibilidades.mean())
+print("Média das Especificidades:", especificidades.mean())
