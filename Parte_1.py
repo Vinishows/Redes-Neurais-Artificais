@@ -1,4 +1,5 @@
 import numpy as np
+import seaborn as sns
 import matplotlib.pyplot as plt
 
 # Função de ativação
@@ -137,7 +138,7 @@ def calc_metrics(Y_true, Y_pred):
 # Comparação de Modelos
 for method, model in zip(["Perceptron", "Adaline", "MLP"], [perceptron, adaline, mlp]):
 # for method, model in zip(["Perceptron", "Adaline"], [perceptron, adaline]):
-    for _ in range(3):  # Monte Carlo com 10 execuções
+    for _ in range(5):  # Monte Carlo com 10 execuções
         np.random.shuffle(index)
         train_idx = index[:train_size]
         test_idx = index[train_size:]
@@ -146,7 +147,7 @@ for method, model in zip(["Perceptron", "Adaline", "MLP"], [perceptron, adaline,
         Y_train, Y_test = Y[train_idx], Y[test_idx]
 
         if method == "MLP":
-            (w_hidden, w_output), errors = model(X_train, Y_train, hidden_layer_sizes=[4], max_epochs=100, lr=0.01)
+            (w_hidden, w_output), curve = model(X_train, Y_train, hidden_layer_sizes=[4], max_epochs=100, lr=0.01)
 
             # Adiciona bias e realiza as predições
             X_test_bias = np.concatenate((-np.ones((X_test.shape[0], 1)), X_test), axis=1)
@@ -154,12 +155,12 @@ for method, model in zip(["Perceptron", "Adaline", "MLP"], [perceptron, adaline,
             hidden_outputs = np.concatenate((-np.ones((hidden_outputs.shape[0], 1)), hidden_outputs), axis=1)  # Bias
             Y_pred = np.array([sign(o) for o in (hidden_outputs @ w_output)])
         else:
-            w, errors = model(X_train, Y_train, max_epochs = 10, lr = 0.001)
+            w, curve = model(X_train, Y_train, max_epochs = 10, lr = 0.001)
             Y_pred = np.array([sign((w[:-1].T @ x + w[-1]).item()) for x in X_test])
 
         # Calcula métricas
         cm, accuracy, sensitivity, specificity = calc_metrics(Y_test.flatten(), Y_pred)
-        results[method].append((accuracy, sensitivity, specificity))
+        results[method].append((accuracy, sensitivity, specificity, cm, curve))
 
 # Exibe as estatísticas para cada modelo
 for method, metrics in results.items():
@@ -167,6 +168,29 @@ for method, metrics in results.items():
     accuracies = [m[0] for m in metrics]
     sensitivities = [m[1] for m in metrics]
     specificities = [m[2] for m in metrics]
+    confusions = [m[3] for m in metrics]
+    curves = [m[4] for m in metrics]
+
+    idx_max = np.argmax(accuracies)
+    idx_min = np.argmin(accuracies)
+
+    sns.heatmap(
+        confusions[idx_max],
+        annot = True, fmt = "d", cmap = "Blues", square = True,
+        xticklabels = ["1", "-1"], yticklabels = ["1", "-1"], cbar = False
+    )
+    plt.title(f"Matriz de Confusão {method} - Maior Acurácia")
+
+    sns.heatmap(
+        confusions[idx_min],
+        annot = True, fmt = "d", cmap = "Reds", square = True,
+        xticklabels = ["1", "-1"], yticklabels = ["1", "-1"], cbar = False
+    )
+    plt.title(f"Matriz de Confusão {method} - Menor Acurácia")
+
+    #Grafico da Curva de Aprendizado
+    # plt.plot(curves[idx_max])
+    # plt.plot(curves[idx_min])
 
     print(f"\n{method} Results:")
     print(f"Média Acurácias: {np.mean(accuracies):.4f}")
