@@ -206,10 +206,8 @@ def calc_metrics(Y, y):
 
 # Comparação de Modelos
 for method, model in zip(["Perceptron", "Adaline", "MLP"], [perceptron, adaline, mlp]):
-# for method, model in zip(["Perceptron", "Adaline"], [perceptron, adaline]):
-# for method, model in zip(["MLP"], [mlp]):
     
-    for _ in range(1):
+    for _ in range(50):
         
         np.random.shuffle(index)
 
@@ -256,20 +254,26 @@ for method, metrics in results.items():
 
     print(confusions[idx_max])
 
+    plt.subplot(1, 2, 1)
     sns.heatmap(
         confusions[idx_max],
-        annot=True, cmap="Green", square=True,
+        annot=True, cmap="Greens", square=True,
         xticklabels=["1", "-1"], yticklabels=["1", "-1"], cbar=False
     )
     plt.title(f"Matriz de Confusão {method} - Maior Acurácia")
+    plt.xlabel("Predito")
+    plt.ylabel("Verdadeiro")
 
+    plt.subplot(1, 2, 2)
     sns.heatmap(
         confusions[idx_min],
-        annot=True, cmap="Red", square=True,
+        annot=True, cmap="Reds", square=True,
         xticklabels=["1", "-1"], yticklabels=["1", "-1"], cbar=False
     )
     plt.title(f"Matriz de Confusão {method} - Menor Acurácia")
-
+    plt.xlabel("Predito")
+    plt.ylabel("Verdadeiro")
+    
     plt.figure(figsize=(8, 5))
     plt.plot(curves[idx_max], label="Maior Acurácia", color="Green")
     plt.plot(curves[idx_min], label="Menor Acurácia", color="Red")
