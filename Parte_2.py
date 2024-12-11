@@ -1,4 +1,5 @@
 import numpy as np
+import seaborn as sns
 import matplotlib.pyplot as plt
 import cv2
 import os
@@ -11,17 +12,13 @@ def sign(u):
 def normalize(X):
     return 2 * (X - np.min(X, axis = 0)) / (np.max(X, axis = 0) - np.min(X, axis = 0)) - 1
 
-#Carregar dados
-
-#Dimensões da imagem. Você deve explorar esse tamanho de acordo com o solicitado no pdf.
-dim = 30 #50 signica que a imagem terá 50 x 50 pixels. ?No trabalho é solicitado para que se investigue dimensões diferentes:
+dim = 50
 # 50x50, 40x40, 30x30, 20x20, 10x10 .... (tua equipe pode tentar outros redimensionamentos.)
 
 pessoas = list(sorted(os.listdir("./RecFac/")))
+C = len(pessoas)
 
 pasta_raiz = "./RecFac"
-
-C = 20 # Esse é o total de classes 
 
 X = []
 Y = []
@@ -45,90 +42,72 @@ Y = np.array(Y)
 
 X = normalize(X)
 
+def tanh(x):
+    return np.tanh(x)
+
+def tanh_derivative(x):
+    return 1 - (np.tanh(x) ** 2)
+
 # Função MLP
-def mlp(X, Y, hidden_layer_sizes, max_epochs, lr):
-    
-    # np.random.seed(42)
+def mlp(X, Y, hidden_layer = 10, max_epochs = 100, lr = 0.1):
 
-    N, p = X.shape
-    X = np.concatenate((-np.ones((N, 1)), X), axis=1)  # Adiciona bias
-
-    # Inicializa pesos
-    w_hidden = np.random.uniform(-0.5, 0.5, (p + 1, hidden_layer_sizes[0]))
-    w_output = np.random.uniform(-0.5, 0.5, (hidden_layer_sizes[0] + 1, 1))
-    errors = []
-
-    for epoch in range(max_epochs):
-        total_error = 0
-        for t in range(N):
-            x_t = X[t].reshape(1, -1)
-            target = Y[t]
-
-            # Forward pass
-            hidden_input = x_t @ w_hidden
-            hidden_output = np.tanh(hidden_input)
-            hidden_output = np.concatenate(([-1], hidden_output.flatten()))  # Bias na camada oculta
-
-            final_input = hidden_output @ w_output
-            final_output = np.tanh(final_input)
-
-            # Cálculo do erro
-            error = target - final_output
-            total_error += error ** 2
-
-            # Backpropagation
-            delta_output = error * (1 - final_output ** 2)
-            delta_hidden = (1 - hidden_output[1:] ** 2) * (w_output[1:, 0] * delta_output)
-
-            w_output += lr * delta_output * hidden_output.reshape(-1, 1)
-            w_hidden += lr * np.outer(x_t.flatten(), delta_hidden)
-
-        errors.append(total_error)
-
-    return (w_hidden, w_output), errors
-
-# Função Adaline
-def adaline(X, Y, max_epochs, lr):
-    
     N, p = X.shape
     _, C = Y.shape
 
-    X = np.hstack((-np.ones((N, 1)), X))
-    W = np.random.random_sample((C, p + 1)) - 0.5
+    W1 = np.random.random(size = (p, hidden_layer)) - 0.5
+    b1 = np.zeros((1, hidden_layer))
+    
+    W2 = np.random.random(size = (hidden_layer, C)) - 0.5
+    b2 = np.zeros((1, C))
+    
+    errors = []
+    
+    for epoch in range(max_epochs):
+        
+        total_error = 0
+        
+        for t in range(N):
 
-    curve = np.zeros(max_epochs)
-
-    for epoca in range(max_epochs):
-
-        error = 0.0
-
-        for t in range(len(X)):
+            z1 = np.dot(X[t:t+1], W1) + b1
+            a1 = tanh(z1)
             
-            x_t = X[t]
-            d_t = Y[t]
-
-            u_t = W @ x_t
-            y_t = u_t
+            z2 = np.dot(a1, W2) + b2
+            y_pred = tanh(z2)
             
-            e_t = d_t - y_t
+            error = Y[t] - y_pred
+            total_error += np.mean(np.abs(error))
+            
+            delta2 = error * tanh_derivative(z2)
+            delta1 = np.dot(delta2, W2.T) * tanh_derivative(z1)
+            
+            W2 += lr * np.dot(a1.T, delta2)
+            b2 += lr * delta2
+            
+            W1 += lr * np.dot(X[t:t+1].T, delta1)
+            b1 += lr * delta1
+            
+        errors.append(total_error)
+            
+    return W1, b1, W2, b2, errors
 
-            error += np.mean(np.abs(e_t))
+def inference(X, W1, b1, W2, b2):
 
-            for j in range(C):
-                W[j] += lr * e_t[j] * x_t
+    z1 = np.dot(X, W1) + b1
+    a1 = tanh(z1)
+    
+    z2 = np.dot(a1, W2) + b2
+    y_pred = tanh(z2)
 
-        curve[epoca] = error
-
-    return W, curve
+    return y_pred
 
 # Função Perceptron
 def perceptron(X, Y, max_epochs, lr):
-    
+
     N, p = X.shape
     _, C = Y.shape
 
     X = np.hstack((-np.ones((N, 1)), X))
-    W = np.random.random_sample((C, p + 1)) - 0.5
+    W = np.zeros((C, p + 1))
 
     curve = np.zeros(max_epochs)
 
@@ -149,7 +128,39 @@ def perceptron(X, Y, max_epochs, lr):
             error += np.mean(np.abs(e_t))
 
             for j in range(C):
-                W[j] += lr * ((e_t[j] * x_t) / 2)
+                W[j] += (lr * e_t[j] * x_t) / 2
+
+        curve[epoca] = error
+
+    return W, curve
+
+def adaline(X, Y, max_epochs, lr):
+    
+    N, p = X.shape
+    _, C = Y.shape
+
+    X = np.hstack((-np.ones((N, 1)), X))
+    W = np.zeros((C, p + 1))
+
+    curve = np.zeros(max_epochs)
+
+    for epoca in range(max_epochs):
+
+        error = 0.0
+        for t in range(len(X)):
+            
+            x_t = X[t]
+            d_t = Y[t]
+
+            u_t = W @ x_t
+            y_t = u_t
+            
+            e_t = d_t - y_t
+
+            error += np.mean(np.abs(e_t))
+
+            for j in range(C):
+                W[j] += lr * e_t[j] * x_t
 
         curve[epoca] = error
 
@@ -160,8 +171,9 @@ index = np.arange(len(X))
 train_size = int(0.8 * len(index))
 
 # Listas para armazenar os resultados
-# results = { "Perceptron": [], "Adaline": [], "MLP": [] }
-results = { "Perceptron": [], "Adaline": [] }
+results = { "Perceptron": [], "Adaline": [], "MLP": [] }
+# results = { "Perceptron": [], "Adaline": [] }
+# results = { "MLP": [] }
 
 def output_perceptron(W, x):
     b = W[:, -1]
@@ -174,8 +186,7 @@ def output_perceptron(W, x):
 
 def calc_metrics(Y, y):
 
-    N, p = Y.shape
-    n_samples = Y.shape[0]
+    n_samples, p = Y.shape
     cm = np.zeros((p, p))
     acc = 0
 
@@ -194,10 +205,11 @@ def calc_metrics(Y, y):
     return acc, cm
 
 # Comparação de Modelos
-# for method, model in zip(["Perceptron", "Adaline", "MLP"], [perceptron, adaline, mlp]):
-for method, model in zip(["Perceptron", "Adaline"], [perceptron, adaline]):
+for method, model in zip(["Perceptron", "Adaline", "MLP"], [perceptron, adaline, mlp]):
+# for method, model in zip(["Perceptron", "Adaline"], [perceptron, adaline]):
+# for method, model in zip(["MLP"], [mlp]):
     
-    for _ in range(5):
+    for _ in range(1):
         
         np.random.shuffle(index)
 
@@ -209,33 +221,67 @@ for method, model in zip(["Perceptron", "Adaline"], [perceptron, adaline]):
 
         if method == "MLP":
             
-            (w_hidden, w_output), errors = model(X_train, Y_train, hidden_layer_sizes = [10], max_epochs=100, lr=0.01)
-
-            X_test_bias = np.concatenate((-np.ones((X_test.shape[0], 1)), X_test), axis=1)
-            hidden_outputs = np.tanh(X_test_bias @ w_hidden)
-            hidden_outputs = np.concatenate((-np.ones((hidden_outputs.shape[0], 1)), hidden_outputs), axis=1)  # Bias
+            W1, b1, W2, b2, errors = model(X_train, Y_train, hidden_layer = 20, max_epochs = 1000, lr = 0.001)
             
-            Y_pred = np.array([sign(o) for o in (hidden_outputs @ w_output)])
+            Y_pred = np.array([inference(x, W1, b1, W2, b2) for x in X_test])
+
+        elif method == "Adaline":
+
+            W, errors = model(X_train, Y_train, max_epochs = 100, lr = 0.001)
+            Y_pred = np.array([output_perceptron(W, x) for x in X_test])
 
         else:
 
-            W, errors = model(X_train, Y_train, max_epochs = 10, lr = 1.0)
+            W, errors = model(X_train, Y_train, max_epochs = 100, lr = 0.01)
             Y_pred = np.array([output_perceptron(W, x) for x in X_test])
 
         accuracy, cm = calc_metrics(Y_test, Y_pred)
-        results[method].append((accuracy, cm))
-
-        # Calcula métricas
-        # cm, accuracy, sensitivity, specificity = calc_metrics(Y_test.flatten(), Y_pred)
-        # results[method].append((accuracy, sensitivity, specificity))
+        results[method].append((accuracy, cm, errors))
 
 # Exibe as estatísticas para cada modelo
 for method, metrics in results.items():
 
     accuracies = [m[0] for m in metrics]
+    confusions = [m[1] for m in metrics]
+    curves = [m[2] for m in metrics]
 
     print(f"\n{method} Results:")
+
+    if len(accuracies) == 0:
+        print("Sem dados.")
+        continue
+
+    idx_max = np.argmax(accuracies)
+    idx_min = np.argmin(accuracies)
+
+    print(confusions[idx_max])
+
+    sns.heatmap(
+        confusions[idx_max],
+        annot=True, cmap="Green", square=True,
+        xticklabels=["1", "-1"], yticklabels=["1", "-1"], cbar=False
+    )
+    plt.title(f"Matriz de Confusão {method} - Maior Acurácia")
+
+    sns.heatmap(
+        confusions[idx_min],
+        annot=True, cmap="Red", square=True,
+        xticklabels=["1", "-1"], yticklabels=["1", "-1"], cbar=False
+    )
+    plt.title(f"Matriz de Confusão {method} - Menor Acurácia")
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(curves[idx_max], label="Maior Acurácia", color="Green")
+    plt.plot(curves[idx_min], label="Menor Acurácia", color="Red")
+    plt.title(f"Curva de Aprendizado - {method}")
+    plt.xlabel("Épocas")
+    plt.ylabel("Erro Total")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
     print(f"Média Acurácias: {np.mean(accuracies):.4f}")
     print(f"Desvio Padrão Acurácias: {np.std(accuracies):.4f}")
     print(f"Maior Valor Acurácias: {np.max(accuracies):.4f}")
     print(f"Menor Valor Acurácias: {np.min(accuracies):.4f}")
+
+    print()
